@@ -1,4 +1,26 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+!.env.example
 
-# Large generated ML artifacts
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+.streamlit/secrets.toml
+
 Models/*.pkl
+Models/*.joblib
+Models/*.h5
+Models/*.keras
 
+data/raw/*.csv
+data/raw/*.zip
+
+*.log
+.DS_Store
+Thumbs.db
