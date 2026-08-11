@@ -1,0 +1,2 @@
+model,mae,rmse,r2,training_periods,test_periods
+Random Forest Regressor,364530.489924008,383623.77982306987,-0.1515371940075272,10,3

@@ -10,8 +10,16 @@ from pydantic import BaseModel, Field
 from .config import settings
 from .database import RetailRepository
 from .service import RetailSegmentationService
+from fastapi import FastAPI
+from src.api.retailai import router as retailai_router
 
-app = FastAPI(title="Meridian API", version="1.0.0", description="Retail customer analytics, segments, forecasts, and recommendations.")
+app = FastAPI(
+    title="Meridian API",
+    version="1.0.0",
+    description="Retail customer analytics, segments, forecasts, and recommendations."
+)
+
+app.include_router(retailai_router)
 repository = RetailRepository(settings.database_path)
 service = RetailSegmentationService()
 

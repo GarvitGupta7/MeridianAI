@@ -68,7 +68,7 @@ class RetailSegmentationService:
             joblib.dump(clusters.scaler, self.config.artifacts_dir / "cluster_scaler.joblib")
             joblib.dump(bundle.models, self.config.artifacts_dir / "predictive_models.joblib")
             (self.config.artifacts_dir / "run_summary.json").write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
-        return {"transactions": transactions, "customers": customers, "evaluation": clusters.evaluation, "campaigns": campaigns, "retention": retention, "forecast": forecast, "eda": eda, "quality": quality, "cleaning_audit": cleaning, "raw_overview": raw_overview, "raw_columns": raw_columns, "cleaned_overview": cleaned_overview, "cleaned_columns": cleaned_columns, "summary": summary, "predictive_metrics": bundle.metrics}
+        return {"transactions": transactions, "customers": customers, "evaluation": clusters.evaluation, "campaigns": campaigns, "retention": retention, "forecast": forecast, "eda": eda, "quality": quality, "cleaning_audit": cleaning, "raw_overview": raw_overview, "raw_columns": raw_columns, "cleaned_overview": cleaned_overview, "cleaned_columns": cleaned_columns, "summary": summary, "predictive_metrics": bundle.metrics, "model_explanations": model_explanations }
 
     def load_recommendation_engine(self) -> RecommendationEngine:
         if self._engine is None:

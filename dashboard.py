@@ -22,6 +22,7 @@ from retail_segmentation.service import RetailSegmentationService
 from retail_segmentation.data import auto_map_transaction_schema
 from retail_segmentation.eda import profile_dataset
 from retail_segmentation.predictive import MODEL_FEATURES, score_predictions, PredictiveBundle
+from retailai_engine.advanced import advanced_segmentation, model_comparison
 
 
 st.set_page_config(page_title="Meridian · Retail Intelligence", page_icon="M", layout="wide", initial_sidebar_state="collapsed")
@@ -80,11 +81,52 @@ h2,h3 {font-family:'IBM Plex Serif',serif !important; color:var(--ink) !importan
 .small-note {font-size:.78rem; color:var(--muted);}
 .top-nav-label {font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; color:var(--muted); margin-bottom:.2rem;}
 .nav-rule {border-bottom:1px solid var(--line); margin:.15rem 0 1.35rem;}
+.workspace-primary {display:flex; gap:.65rem; align-items:stretch; margin:.35rem 0 .65rem;}
+.workspace-primary .primary-slot {flex:1 1 0; min-width:0;}
+.workspace-dropdowns {display:flex; gap:.65rem; align-items:stretch;}
+.workspace-icon {font-size:1.05rem; line-height:1; margin-bottom:.28rem; color:var(--green);}
+.workspace-subtle {font-size:.68rem; color:var(--muted); margin-top:.25rem;}
+.prediction-card-wrap {background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1rem 1rem .9rem; margin:.2rem 0 1.25rem;}
+.prediction-card-title {font-family:'IBM Plex Mono',monospace; font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--green); font-weight:600; margin-bottom:.7rem;}
+.prediction-choice {border:1px solid var(--line); border-radius:4px; background:#fff; padding:1rem 1.05rem; min-height:118px;}
+.prediction-choice.selected {border:2px solid var(--green); background:#F7FAF8; padding:.95rem 1rem;}
+.prediction-choice-icon {width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#E8F0EB; color:var(--green); font-size:1.25rem; float:left; margin-right:.75rem;}
+.prediction-choice-title {font-weight:700; font-size:.98rem; margin-top:.1rem; color:var(--ink);}
+.prediction-choice-copy {font-size:.82rem; line-height:1.45; color:var(--muted); margin-top:.28rem;}
+.prediction-action {display:flex; flex-direction:column; justify-content:center; height:100%;}
+
 .card-kicker {font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; color:var(--green); font-weight:600; margin-bottom:.25rem;}
 .card-title {font-family:'IBM Plex Serif',serif !important; font-size:1.15rem !important; margin:.1rem 0 .75rem !important;}
 [data-testid="stVerticalBlockBorderWrapper"] {background:rgba(255,255,255,.72); border-color:var(--line) !important; border-radius:3px !important; padding:.35rem .55rem .6rem;}
 .empty-state {padding:2.5rem 0 1rem;}
 .stSelectbox > div > div {border-radius:2px;}
+
+/* Prediction target cards: keep Streamlit radio behavior, style the choices as cards. */
+div[data-testid="stRadio"] > div[role="radiogroup"] {
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+    gap:.75rem !important;
+    width:100% !important;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+    display:flex !important;
+    align-items:flex-start !important;
+    min-height:118px !important;
+    padding:1rem 1.05rem !important;
+    border:1px solid var(--line) !important;
+    border-radius:4px !important;
+    background:#fff !important;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+    border:2px solid var(--green) !important;
+    background:#F7FAF8 !important;
+    padding:.95rem 1rem !important;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
+    font-weight:700 !important;
+    font-size:.98rem !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -228,7 +270,12 @@ def load_predictive_bundle() -> PredictiveBundle:
     if not path.exists():
         return PredictiveBundle({}, {})
     try:
-        return PredictiveBundle(joblib.load(path), {})
+        saved = joblib.load(path)
+        if isinstance(saved, PredictiveBundle):
+            return saved
+        if isinstance(saved, dict):
+            return PredictiveBundle(saved, {})
+        return PredictiveBundle({}, {})
     except Exception:
         return PredictiveBundle({}, {})
 
@@ -251,10 +298,32 @@ def report_explanation(title: str, text: str, bullets: list[str] | None = None):
 
 
 def pct(value) -> float:
+    """Convert a probability/rate to percentage points for display."""
     try:
-        return float(value) * 100
+        numeric = float(value)
     except (TypeError, ValueError):
         return 0.0
+    return numeric * 100 if abs(numeric) <= 1 else numeric
+
+
+def format_percent_column(frame: pd.DataFrame, column: str, decimals: int = 1) -> pd.DataFrame:
+    """Format a numeric probability/rate/percentage column for dashboard display."""
+    if column not in frame.columns:
+        return frame
+    values = pd.to_numeric(frame[column], errors="coerce")
+    converted = values * 100 if values.dropna().empty or values.dropna().abs().max() <= 1 else values
+    frame[column] = converted.round(decimals).map(
+        lambda value: f"{value:.{decimals}f}%" if pd.notna(value) else "—"
+    )
+    return frame
+
+
+def format_percent_columns(frame: pd.DataFrame, columns: list[str], decimals: int = 1) -> pd.DataFrame:
+    """Format multiple dashboard probability/rate columns without changing source data."""
+    result = frame.copy()
+    for column in columns:
+        result = format_percent_column(result, column, decimals)
+    return result
 
 
 
@@ -383,17 +452,40 @@ def render_customer_filters(customers: pd.DataFrame, key_prefix: str = "customer
         & (customers["health_score"] >= health_min)
     ].copy()
 
-# Top navigation — visible page buttons keep the workspace accessible without a sidebar or dropdown.
-PAGE_OPTIONS = [
-    "Overview", "Customers", "Predictive Engine", "Customer Visuals",
-    "Campaigns", "Sales Planning", "Data Quality", "Model Trust"
+# Meridian header + workspace navigation.
+PRIMARY_PAGES = [
+    ("Overview", "⌂"),
+    ("Customers", "♙"),
 ]
+
+WORKSPACE_GROUPS = {
+    "Intelligence": [
+        ("Predictive Engine", "⌁"),
+        ("Model Trust", "◉"),
+        ("Advanced ML", "✦"),
+    ],
+    "Analytics": [
+        ("Customer Visuals", "▥"),
+        ("Data Quality", "✓"),
+    ],
+    "Actions": [
+        ("Campaigns", "⚑"),
+        ("Sales Planning", "↗"),
+        ("Recommendations", "★"),
+        ("Explainability", "♧"),
+    ],
+}
 
 st.markdown(
     '<div class="meridian-header">'
-    '<div><p class="meridian-mark">Meridian</p>'
-    '<p class="meridian-mark-sub">Retail intelligence — internal build</p><p class="meridian-mark-author">Created by Garvit Gupta</p></div>'
-    '<div class="small-note">Private workspace · company data stays local</div>'
+    '<div style="display:flex;align-items:center;gap:1rem;">'
+    '<p class="meridian-mark">Meridian</p>'
+    '<div style="height:42px;width:1px;background:var(--line);"></div>'
+    '<div>'
+    '<p class="meridian-mark-sub">Retail Intelligence</p>'
+    '<p class="meridian-mark-author">Powered by RetailAI Nexus</p>'
+    '</div>'
+    '</div>'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -401,22 +493,40 @@ st.markdown(
 if "workspace_page" not in st.session_state:
     st.session_state.workspace_page = "Overview"
 
-st.markdown('<div class="top-nav-label">WORKSPACE</div>', unsafe_allow_html=True)
-nav_cols = st.columns(len(PAGE_OPTIONS) + 1, gap="small")
+def _go_workspace(nav_page: str) -> None:
+    st.session_state.workspace_page = nav_page
+    st.rerun()
 
-for col, nav_page in zip(nav_cols[:-1], PAGE_OPTIONS):
+st.markdown('<div class="top-nav-label">WORKSPACE</div>', unsafe_allow_html=True)
+
+primary_cols = st.columns(2, gap="small")
+for col, (nav_page, icon) in zip(primary_cols, PRIMARY_PAGES):
     with col:
         active = st.session_state.workspace_page == nav_page
         if st.button(
-            nav_page,
-            key=f"nav_{nav_page.lower().replace(' ', '_')}",
+            f"{icon}  {nav_page}",
+            key=f"nav_primary_{nav_page.lower().replace(' ', '_')}",
             use_container_width=True,
             type="primary" if active else "secondary",
         ):
-            st.session_state.workspace_page = nav_page
-            st.rerun()
+            _go_workspace(nav_page)
 
-with nav_cols[-1]:
+drop_cols = st.columns([1, 1, 1, 1.05], gap="small")
+
+for col, (group_name, group_pages) in zip(drop_cols[:3], WORKSPACE_GROUPS.items()):
+    with col:
+        with st.popover(f"{group_name} ▾", use_container_width=True):
+            st.markdown(f"**{group_name}**")
+            for nav_page, icon in group_pages:
+                if st.button(
+                    f"{icon}  {nav_page}",
+                    key=f"nav_group_{nav_page.lower().replace(' ', '_')}",
+                    use_container_width=True,
+                    type="primary" if st.session_state.workspace_page == nav_page else "secondary",
+                ):
+                    _go_workspace(nav_page)
+
+with drop_cols[3]:
     with st.popover("＋ Data", use_container_width=True):
         st.markdown("**Data controls**")
         st.caption("Upload a company transaction export or restore the secure demo dataset.")
@@ -442,7 +552,6 @@ with nav_cols[-1]:
 st.markdown('<div class="nav-rule"></div>', unsafe_allow_html=True)
 
 page = st.session_state.workspace_page
-st.markdown('<div class="nav-rule"></div>', unsafe_allow_html=True)
 
 # Uploaded data is session-scoped. This prevents a deployed Streamlit instance from
 # leaking one company's data into another user's session, while keeping the active
@@ -479,6 +588,7 @@ if uploaded:
             st.session_state.pending_final_mapping = detected.copy()
             # A newly selected file must never silently continue showing the previous analysis.
             st.session_state.active_analysis = None
+            st.session_state.active_analysis_signature = None
             st.session_state.active_dataset_label = f"{uploaded.name} · awaiting analysis"
     except Exception as error:
         st.error(f"Could not read the uploaded dataset: {error}")
@@ -517,6 +627,7 @@ if st.session_state.pending_raw_data is not None and st.session_state.active_ana
             result["raw_data"] = raw_pending.copy()
             result["mapping"] = st.session_state.pending_final_mapping.copy()
             st.session_state.active_analysis = result
+            st.session_state.active_analysis_signature = st.session_state.pending_upload_signature
             st.session_state.active_dataset_label = uploaded.name if uploaded else "Uploaded dataset"
             st.success("Analysis complete. The dashboard is now using your uploaded and cleaned dataset.")
             st.rerun()
@@ -570,6 +681,8 @@ st.markdown(
 
 # Pages without a customer-filter workflow use the complete portfolio.
 filtered = customers.copy()
+
+active_analysis = st.session_state.get("active_analysis")
 
 # Selected page only — no open tab strip and no page contents rendered together.
 if page == "Overview":
@@ -726,7 +839,24 @@ elif page == "Customers":
         st.warning("No customers match the active filters.")
     else:
         priority_cols = [c for c in ["customer_id", "persona", "customer_tier", "health_score", "churn_risk", "predicted_churn_probability", "purchase_probability", "predicted_next_purchase_days", "predicted_90d_spend", "clv_estimate"] if c in filtered.columns]
-        st.dataframe(filtered.sort_values(["churn_risk", "clv_estimate"], ascending=[False, False])[priority_cols], use_container_width=True, hide_index=True)
+        customer_report = filtered.sort_values(["churn_risk", "clv_estimate"], ascending=[False, False])[priority_cols].copy()
+        customer_report = format_percent_columns(
+            customer_report,
+            ["churn_risk", "predicted_churn_probability", "purchase_probability"],
+        )
+        customer_report = customer_report.rename(columns={
+            "customer_id": "Customer ID",
+            "persona": "Persona",
+            "customer_tier": "Tier",
+            "health_score": "Health",
+            "churn_risk": "Churn risk",
+            "predicted_churn_probability": "Churn probability",
+            "purchase_probability": "Purchase probability",
+            "predicted_next_purchase_days": "Next purchase (days)",
+            "predicted_90d_spend": "Predicted 90-day spend",
+            "clv_estimate": "Estimated CLV",
+        })
+        st.dataframe(customer_report, use_container_width=True, hide_index=True)
         st.download_button("Download customer intelligence CSV", filtered.to_csv(index=False).encode(), "customer_intelligence.csv", "text/csv")
 
 elif page == "Predictive Engine":
@@ -742,7 +872,12 @@ elif page == "Predictive Engine":
     if not bundle.models:
         st.warning("Predictive models are not available. Run the analysis once with at least 20 customers.")
     else:
-        st.markdown('<div class="section-label">Prediction target</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="prediction-card-wrap">'
+            '<div class="prediction-card-title">Prediction target</div>',
+            unsafe_allow_html=True,
+        )
+
         mode = st.radio(
             "Prediction target",
             ["Specific customer", "Customer profile from filters"],
@@ -750,6 +885,8 @@ elif page == "Predictive Engine":
             key="prediction_target_mode",
             label_visibility="collapsed",
         )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
         selected_customer = None
         cohort = pd.DataFrame()
@@ -846,7 +983,19 @@ elif page == "Predictive Engine":
             )
         else:
             purchase_p = float(bundle.models["purchase"].predict_proba(profile)[0, 1])
-            churn_p = float(bundle.models["churn"].predict_proba(profile)[0, 1])
+
+            if "churn" in bundle.models:
+                churn_p = float(bundle.models["churn"].predict_proba(profile)[0, 1])
+            else:
+                # Compatibility with an older saved artifact. The current
+                # churn model can be regenerated later; do not crash the UI.
+                customer_risk = float(
+                    selected_customer.get("churn_risk", 0)
+                    if mode == "Specific customer"
+                    else cohort.get("churn_risk", pd.Series([0])).median()
+                )
+                churn_p = float(np.clip(customer_risk / 100.0, 0.0, 1.0))
+
             next_days = max(1.0, float(bundle.models["next_purchase"].predict(profile)[0]))
             spend_90d = max(0.0, float(bundle.models["spending"].predict(profile)[0]))
 
@@ -863,6 +1012,11 @@ elif page == "Predictive Engine":
             r3.metric("Churn probability", f"{churn_p:.1%}")
             r4.metric("Predicted next purchase", f"{next_days:.0f} days")
             r5.metric("Predicted 90-day spend", f"${spend_90d:,.0f}")
+            if "churn" not in bundle.models:
+                st.caption(
+                    "Churn probability is currently using Meridian's existing churn-risk assessment "
+                    "because the saved predictive artifact predates the churn-model update."
+                )
 
             left, right = st.columns(2)
             with left:
@@ -880,8 +1034,8 @@ elif page == "Predictive Engine":
                         ("Monetary value", f"${float(selected_customer.get('monetary_value', 0)):,.2f}"),
                         ("Average order value", f"${float(selected_customer.get('avg_order_value', 0)):,.2f}"),
                         ("Tenure", f"{float(selected_customer.get('tenure_days', 0)):.1f} days"),
-                        ("Purchase rate", f"{float(selected_customer.get('purchase_rate', 0)):.3f}"),
-                        ("Return rate", f"{float(selected_customer.get('return_rate', 0)):.3f}"),
+                        ("Purchase rate", f"{pct(selected_customer.get('purchase_rate', 0)):.1f}%"),
+                        ("Return rate", f"{pct(selected_customer.get('return_rate', 0)):.1f}%"),
                         ("Product diversity", f"{float(selected_customer.get('product_diversity', 0)):.1f}"),
                     ]
                 else:
@@ -894,8 +1048,8 @@ elif page == "Predictive Engine":
                         ("Typical monetary value", f"${profile.monetary_value.iloc[0]:,.2f}"),
                         ("Typical average order value", f"${profile.avg_order_value.iloc[0]:,.2f}"),
                         ("Typical tenure", f"{profile.tenure_days.iloc[0]:.1f} days"),
-                        ("Typical purchase rate", f"{profile.purchase_rate.iloc[0]:.3f}"),
-                        ("Typical return rate", f"{profile.return_rate.iloc[0]:.3f}"),
+                        ("Typical purchase rate", f"{pct(profile.purchase_rate.iloc[0]):.1f}%"),
+                        ("Typical return rate", f"{pct(profile.return_rate.iloc[0]):.1f}%"),
                         ("Typical product diversity", f"{profile.product_diversity.iloc[0]:.1f}"),
                     ]
                 predicted_info = pd.DataFrame(info_rows, columns=["Information", "Value"])
@@ -912,7 +1066,7 @@ elif page == "Predictive Engine":
                         "Result": [
                             f"{purchase_p:.1%}", f"{churn_p:.1%}", f"{next_days:.0f} days",
                             f"${spend_90d:,.0f}",
-                            f"{float(selected_customer.get('churn_risk', 0)):.1f}",
+                            f"{pct(selected_customer.get('churn_risk', 0)):.1f}%",
                             f"${float(selected_customer.get('clv_estimate', 0)):,.2f}",
                         ],
                     })
@@ -924,11 +1078,24 @@ elif page == "Predictive Engine":
                         "customer_id", "persona", "customer_tier", "health_score", "recency_days",
                         "frequency", "monetary_value", "predicted_churn_probability", "predicted_90d_spend"
                     ] if c in cohort.columns]
-                    st.dataframe(
-                        cohort.sort_values("health_score", ascending=False)[sample_cols].head(25),
-                        use_container_width=True,
-                        hide_index=True,
+                    cohort_report = cohort.sort_values("health_score", ascending=False)[sample_cols].head(25).copy()
+                    cohort_report = format_percent_columns(
+                        cohort_report,
+                        ["predicted_churn_probability", "purchase_probability", "churn_risk"],
                     )
+                    cohort_report = cohort_report.rename(columns={
+                        "customer_id": "Customer ID",
+                        "persona": "Persona",
+                        "customer_tier": "Tier",
+                        "health_score": "Health",
+                        "recency_days": "Recency (days)",
+                        "frequency": "Frequency",
+                        "monetary_value": "Historical spend",
+                        "predicted_churn_probability": "Churn probability",
+                        "purchase_probability": "Purchase probability",
+                        "predicted_90d_spend": "Predicted 90-day spend",
+                    })
+                    st.dataframe(cohort_report, use_container_width=True, hide_index=True)
                     st.caption("The report uses median behavioral features from the filtered cohort to create a representative customer profile.")
 
             st.markdown('<div class="section-label">Decision summary</div>', unsafe_allow_html=True)
@@ -1127,7 +1294,7 @@ elif page == "Customer Visuals":
                     px.scatter(
                         filtered, x="health_score", y="churn_risk", color="persona", size="clv_estimate",
                         hover_data=["customer_id", "customer_tier", "predicted_90d_spend"],
-                        labels={"health_score": "Customer health", "churn_risk": "Churn risk", "clv_estimate": "Estimated value"},
+                        labels={"health_score": "Customer health", "churn_risk": "Churn risk (%)", "clv_estimate": "Estimated value"},
                         color_discrete_map=PERSONA_COLORS, color_discrete_sequence=PALETTE, template="meridian",
                     ),
                     use_container_width=True,
@@ -1163,7 +1330,7 @@ elif page == "Customer Visuals":
                         retention_plot, x="period", y="retention_rate", color="cohort_month", markers=True,
                         labels={
                             "period": "Months since first purchase",
-                            "retention_rate": "Customers retained",
+                            "retention_rate": "Customers retained (%)",
                             "cohort_month": "Starting month",
                         },
                         color_discrete_sequence=PALETTE, template="meridian",
@@ -1186,7 +1353,7 @@ elif page == "Customer Visuals":
                     filtered, x="predicted_churn_probability", nbins=20, marginal="box",
                     labels={"predicted_churn_probability": "Predicted churn probability"},
                     color_discrete_sequence=[PALETTE[0]], template="meridian",
-                ),
+                ).update_xaxes(tickformat=".0%"),
                 use_container_width=True,
             )
             st.caption("A concentration toward the right means more customers are predicted to be at higher risk of leaving.")
@@ -1215,7 +1382,7 @@ elif page == "Customer Visuals":
                     "monetary_value": "Current spend",
                 },
                 color_discrete_map=TIER_COLORS, color_discrete_sequence=PALETTE, template="meridian",
-            ),
+            ).update_xaxes(tickformat=".0%"),
             use_container_width=True,
         )
         st.caption("Top-left contains valuable customers with lower predicted churn; top-right contains valuable customers who may need retention action first.")
@@ -1271,7 +1438,7 @@ elif page == "Customer Visuals":
                     x="predicted_churn_probability", y="customer_id", orientation="h",
                     labels={"predicted_churn_probability": "Churn probability", "customer_id": "Customer"},
                     color_discrete_sequence=[PALETTE[0]], template="meridian",
-                ),
+                ).update_xaxes(tickformat=".0%"),
                 use_container_width=True,
             )
             st.caption("Customers with the strongest predicted likelihood of churn within the selected portfolio.")
@@ -1397,7 +1564,25 @@ elif page == "Campaigns":
         "campaign_reason", "campaign_opportunity_score", "churn_risk", "clv_estimate", "predicted_90d_spend",
     ]
     display_columns = [column for column in display_columns if column in campaign_view.columns]
-    st.dataframe(campaign_view[display_columns], use_container_width=True, hide_index=True)
+    campaign_report = campaign_view[display_columns].copy()
+    campaign_report = format_percent_columns(campaign_report, ["churn_risk"])
+    campaign_report = campaign_report.rename(columns={
+        "customer_id": "Customer ID",
+        "persona": "Persona",
+        "customer_tier": "Tier",
+        "priority": "Priority",
+        "campaign_strategy": "Campaign strategy",
+        "recommended_action": "Recommended action",
+        "suggested_offer": "Suggested offer",
+        "recommended_channel": "Channel",
+        "incentive_level": "Incentive",
+        "campaign_reason": "Reason",
+        "campaign_opportunity_score": "Opportunity score",
+        "churn_risk": "Churn risk",
+        "clv_estimate": "Estimated CLV",
+        "predicted_90d_spend": "Predicted 90-day spend",
+    })
+    st.dataframe(campaign_report, use_container_width=True, hide_index=True)
     st.download_button(
         "Download campaign plan CSV",
         campaign_view.to_csv(index=False).encode(),
@@ -1539,8 +1724,8 @@ elif page == "Model Trust":
     pm = prediction_metrics(summary)
     if pm:
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Purchase accuracy", pm.get("purchase_accuracy", "—"))
-        m2.metric("Purchase ROC-AUC", pm.get("purchase_auc", "—"))
+        m1.metric("Purchase accuracy", f"{pct(pm.get('purchase_accuracy')):.1f}%" if pm.get("purchase_accuracy") not in (None, "—") else "—")
+        m2.metric("Purchase ROC-AUC", f"{pct(pm.get('purchase_auc')):.1f}%" if pm.get("purchase_auc") not in (None, "—") else "—")
         m3.metric("Next-purchase MAE", pm.get("next_purchase_mae_in_sample", "—"))
         m4.metric("Spending MAE", pm.get("spending_mae_in_sample", "—"))
 
@@ -1551,7 +1736,10 @@ elif page == "Model Trust":
             ("Next-purchase MAE", "next_purchase_mae_in_sample", "Lower is better"),
             ("Spending MAE", "spending_mae_in_sample", "Lower is better"),
         ]:
-            trust_rows.append({"Metric": label, "Result": pm.get(key, "—"), "Interpretation": direction})
+            result = pm.get(key, "—")
+            if key in {"purchase_accuracy", "purchase_auc"} and result not in (None, "—"):
+                result = f"{pct(result):.1f}%"
+            trust_rows.append({"Metric": label, "Result": result, "Interpretation": direction})
         st.markdown('<div class="section-label">Predictive evaluation</div>', unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(trust_rows), use_container_width=True, hide_index=True)
     else:
@@ -1560,9 +1748,11 @@ elif page == "Model Trust":
     st.markdown('<div class="section-label">Clustering quality report</div>', unsafe_allow_html=True)
     if not evaluation.empty:
         eval_report = evaluation.copy()
-        for col in ["silhouette", "davies_bouldin", "calinski_harabasz", "noise_ratio"]:
+        for col in ["silhouette", "davies_bouldin", "calinski_harabasz"]:
             if col in eval_report:
                 eval_report[col] = eval_report[col].round(3)
+        if "noise_ratio" in eval_report:
+            eval_report = format_percent_column(eval_report, "noise_ratio", 1)
         eval_report = eval_report.rename(columns={
             "silhouette":"Silhouette", "davies_bouldin":"Davies-Bouldin",
             "calinski_harabasz":"Calinski-Harabasz", "n_clusters":"Clusters",
@@ -1609,3 +1799,101 @@ elif page == "Model Trust":
 - **Feature importance:** identifies which input variables the trained models relied on most; it does not establish causation.
 - Re-run the analysis when the source data or customer behavior changes materially.
 """)
+
+elif page == "Advanced ML":
+    st.markdown('<div class="section-label">RetailAI Nexus engine</div>', unsafe_allow_html=True)
+    st.subheader("Advanced customer intelligence")
+    customers = active_analysis["customers"].copy() if active_analysis else pd.DataFrame()
+    if customers.empty:
+        st.info("Run an analysis first to activate the advanced ML workspace.")
+    else:
+        tabs = st.tabs(["Advanced Segmentation", "Model Comparison", "Customer Scoring"])
+        with tabs[0]:
+            advanced = advanced_segmentation(customers)
+            a, b, c = st.columns(3)
+            with a:
+                st.metric("DBSCAN clusters", int(advanced["dbscan"]["dbscan_cluster"].nunique()) if not advanced["dbscan"].empty else 0)
+            with b:
+                st.metric("Hierarchical clusters", int(advanced["hierarchical"]["hierarchical_cluster"].nunique()) if not advanced["hierarchical"].empty else 0)
+            with c:
+                st.metric("Detected outliers", int(advanced["outliers"]["outlier"].sum()) if not advanced["outliers"].empty else 0)
+            if not advanced["dbscan"].empty:
+                st.dataframe(advanced["dbscan"].head(100), use_container_width=True, hide_index=True)
+        with tabs[1]:
+            comparison = model_comparison(customers)
+            if comparison.empty:
+                st.info("Not enough class variation for a meaningful comparison.")
+            else:
+                comparison_report = comparison.copy()
+                comparison_report = format_percent_columns(
+                    comparison_report,
+                    [c for c in ["accuracy", "precision", "recall", "f1", "roc_auc", "auc"] if c in comparison_report.columns],
+                )
+                st.dataframe(comparison_report, use_container_width=True, hide_index=True)
+                if "f1" in comparison.columns:
+                    chart_comparison = comparison.copy()
+                    chart_comparison["f1"] = pd.to_numeric(chart_comparison["f1"], errors="coerce")
+                    st.plotly_chart(
+                        px.bar(
+                            chart_comparison,
+                            x="model",
+                            y="f1",
+                            text=chart_comparison["f1"].map(lambda value: f"{value:.1%}" if pd.notna(value) else "—"),
+                            labels={"model": "Model", "f1": "F1 score"},
+                            color_discrete_sequence=[PALETTE[0]],
+                            template="meridian",
+                        ).update_yaxes(tickformat=".0%"),
+                        use_container_width=True,
+                    )
+        with tabs[2]:
+            cols = [c for c in ["customer_id", "health_score", "churn_risk", "customer_tier", "persona", "predicted_churn_probability", "purchase_probability", "predicted_90d_spend"] if c in customers.columns]
+            scoring_report = customers[cols].sort_values("health_score").head(100).copy()
+            scoring_report = format_percent_columns(
+                scoring_report,
+                ["churn_risk", "predicted_churn_probability", "purchase_probability"],
+            )
+            scoring_report = scoring_report.rename(columns={
+                "customer_id": "Customer ID",
+                "health_score": "Health",
+                "churn_risk": "Churn risk",
+                "customer_tier": "Tier",
+                "persona": "Persona",
+                "predicted_churn_probability": "Churn probability",
+                "purchase_probability": "Purchase probability",
+                "predicted_90d_spend": "Predicted 90-day spend",
+            })
+            st.dataframe(scoring_report, use_container_width=True, hide_index=True)
+
+elif page == "Recommendations":
+    st.markdown('<div class="section-label">RetailAI Nexus recommendation engine</div>', unsafe_allow_html=True)
+    st.subheader("Personalized product recommendations")
+    if not active_analysis:
+        st.info("Run an analysis first to activate recommendations.")
+    else:
+        engine = service.load_recommendation_engine()
+        customers = active_analysis["customers"]
+        customer_ids = customers["customer_id"].astype(str).tolist() if "customer_id" in customers else []
+        selected = st.selectbox("Customer", customer_ids) if customer_ids else None
+        if selected:
+            try:
+                recs = engine.recommend_products(selected, limit=10)
+                st.dataframe(pd.DataFrame(recs), use_container_width=True, hide_index=True)
+            except Exception as error:
+                st.warning(f"Recommendation engine could not produce a customer-specific result: {error}")
+        st.caption("The engine also supports similarity and popularity-based recommendations from the analyzed transaction catalog.")
+
+elif page == "Explainability":
+    st.markdown('<div class="section-label">Explainable AI</div>', unsafe_allow_html=True)
+    st.subheader("Why the model made this prediction")
+    if not active_analysis:
+        st.info("Run an analysis first to activate explainability.")
+    else:
+        explanation = active_analysis.get("model_explanations", pd.DataFrame())
+        if isinstance(explanation, pd.DataFrame) and not explanation.empty:
+            st.dataframe(explanation, use_container_width=True, hide_index=True)
+            for model_name in explanation["model"].dropna().unique()[:4]:
+                subset = explanation[explanation["model"] == model_name].head(10)
+                st.markdown(f"**{model_name} — top contributing features**")
+                st.bar_chart(subset.set_index("feature")["importance"])
+        else:
+            st.info("Model feature contributions will appear here after analysis.")
