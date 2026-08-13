@@ -6,6 +6,7 @@ All endpoints are additive. Existing MeridianAI routes remain unchanged.
 
 from __future__ import annotations
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 from src.retailai_engine.churn_pipeline import ChurnPipeline
 from src.retailai_engine.explainability import explain_classifier
@@ -16,17 +17,34 @@ from src.retailai_engine.forecast_engine import (
 from src.retailai_engine.recommendation_engine import AdvancedRecommendationEngine
 from src.retailai_engine.rfm_segmentation import rfm_segments
 from src.retailai_engine.advanced import advanced_segmentation, model_comparison
+from src.retail_segmentation.config import settings
+from src.retail_segmentation.database import RetailRepository
 
 router = APIRouter(tags=["MeridianAI Advanced ML"])
+repository = RetailRepository(settings.database_path)
 
 
 def _result():
-    from src.api.main import _state
+    try:
+        customers = repository.load_frame("customers")
+        transactions = repository.load_frame("transactions")
+        if "invoice_date" in transactions.columns:
+            transactions["invoice_date"] = pd.to_datetime(
+                transactions["invoice_date"], errors="coerce"
+            )
+        result = {
+            "customers": customers,
+            "transactions": transactions,
+        }
+    except Exception as exc:
+        raise HTTPException(404, "No analysis is loaded.") from exc
 
-    if "result" not in _state:
-        raise HTTPException(404, "No analysis is loaded.")
+    try:
+        result["sales_forecast"] = repository.load_frame("sales_forecast")
+    except Exception:
+        pass
 
-    return _state["result"]
+    return result
 
 
 def _customers():
@@ -58,17 +76,17 @@ def analytics_dashboard():
     return {
         "customer_count": int(len(customers)),
         "total_revenue": float(
-            customers["TotalSpent"].sum()
-        ) if "TotalSpent" in customers.columns else 0.0,
+            customers["monetary_value"].sum()
+        ) if "monetary_value" in customers.columns else 0.0,
         "average_spent": float(
-            customers["TotalSpent"].mean()
-        ) if "TotalSpent" in customers.columns else 0.0,
+            customers["monetary_value"].mean()
+        ) if "monetary_value" in customers.columns else 0.0,
         "average_frequency": float(
-            customers["Frequency"].mean()
-        ) if "Frequency" in customers.columns else 0.0,
+            customers["frequency"].mean()
+        ) if "frequency" in customers.columns else 0.0,
         "average_recency": float(
-            customers["Recency"].mean()
-        ) if "Recency" in customers.columns else 0.0,
+            customers["recency_days"].mean()
+        ) if "recency_days" in customers.columns else 0.0,
     }
 
 
@@ -76,13 +94,13 @@ def analytics_dashboard():
 def analytics_revenue():
     customers = _customers()
 
-    if "TotalSpent" not in customers.columns:
+    if "monetary_value" not in customers.columns:
         return {"total_revenue": 0.0}
 
     return {
-        "total_revenue": float(customers["TotalSpent"].sum()),
+        "total_revenue": float(customers["monetary_value"].sum()),
         "average_revenue_per_customer": float(
-            customers["TotalSpent"].mean()
+            customers["monetary_value"].mean()
         ),
     }
 
@@ -91,14 +109,14 @@ def analytics_revenue():
 def analytics_recency():
     customers = _customers()
 
-    if "Recency" not in customers.columns:
+    if "recency_days" not in customers.columns:
         return {"average_recency": 0.0}
 
     return {
-        "average_recency": float(customers["Recency"].mean()),
-        "median_recency": float(customers["Recency"].median()),
-        "minimum_recency": float(customers["Recency"].min()),
-        "maximum_recency": float(customers["Recency"].max()),
+        "average_recency": float(customers["recency_days"].mean()),
+        "median_recency": float(customers["recency_days"].median()),
+        "minimum_recency": float(customers["recency_days"].min()),
+        "maximum_recency": float(customers["recency_days"].max()),
     }
 
 
@@ -106,41 +124,41 @@ def analytics_recency():
 def analytics_tiers():
     customers = _customers()
 
-    if "Tier" not in customers.columns:
+    if "customer_tier" not in customers.columns:
         return {}
 
-    return customers["Tier"].value_counts().to_dict()
+    return customers["customer_tier"].value_counts().to_dict()
 
 
 @router.get("/analytics/personas", tags=["Analytics"])
 def analytics_personas():
     customers = _customers()
 
-    if "Persona" not in customers.columns:
+    if "persona" not in customers.columns:
         return {}
 
-    return customers["Persona"].value_counts().to_dict()
+    return customers["persona"].value_counts().to_dict()
 
 
 @router.get("/analytics/clusters", tags=["Analytics"])
 def analytics_clusters():
     customers = _customers()
 
-    if "Cluster" not in customers.columns:
+    if "cluster" not in customers.columns:
         return {}
 
-    return customers["Cluster"].value_counts().to_dict()
+    return customers["cluster"].value_counts().to_dict()
 
 
 @router.get("/analytics/average-spent", tags=["Analytics"])
 def analytics_average_spent():
     customers = _customers()
 
-    if "TotalSpent" not in customers.columns:
+    if "monetary_value" not in customers.columns:
         return {"average_spent": 0.0}
 
     return {
-        "average_spent": float(customers["TotalSpent"].mean())
+        "average_spent": float(customers["monetary_value"].mean())
     }
 
 
@@ -148,11 +166,11 @@ def analytics_average_spent():
 def analytics_average_frequency():
     customers = _customers()
 
-    if "Frequency" not in customers.columns:
+    if "frequency" not in customers.columns:
         return {"average_frequency": 0.0}
 
     return {
-        "average_frequency": float(customers["Frequency"].mean())
+        "average_frequency": float(customers["frequency"].mean())
     }
 
 
@@ -169,11 +187,11 @@ def customer_count():
 def high_value_customers(limit: int = 100):
     customers = _customers()
 
-    if "TotalSpent" not in customers.columns:
+    if "monetary_value" not in customers.columns:
         return []
 
     return _records(
-        customers.sort_values("TotalSpent", ascending=False),
+        customers.sort_values("monetary_value", ascending=False),
         limit,
     )
 
@@ -183,33 +201,17 @@ def high_churn_customers(limit: int = 100):
     result = _result()
     customers = result["customers"].copy()
 
-    pipeline = ChurnPipeline().fit(customers)
+    pipeline = ChurnPipeline()
+    pipeline.fit(customers)
     predictions = pipeline.predict(customers)
 
-    if "ChurnProbability" in predictions.columns:
+    if "churn_probability" in predictions.columns:
         predictions = predictions.sort_values(
-            "ChurnProbability",
+            "churn_probability",
             ascending=False,
         )
 
     return _records(predictions, limit)
-
-
-@router.get("/customers/{customer_id}", tags=["Customers"])
-def customer_detail(customer_id: str):
-    customers = _customers()
-
-    if "CustomerID" not in customers.columns:
-        raise HTTPException(404, "CustomerID column not found.")
-
-    matches = customers[
-        customers["CustomerID"].astype(str) == str(customer_id)
-    ]
-
-    if matches.empty:
-        raise HTTPException(404, "Customer not found.")
-
-    return matches.iloc[0].to_dict()
 
 
 # ============================================================
@@ -224,15 +226,16 @@ def segments_summary():
         "customer_count": len(customers)
     }
 
-    for column in [
-        "Cluster",
-        "DBSCAN_Cluster",
-        "Hierarchical_Cluster",
-        "Persona",
-        "Tier",
-    ]:
+    columns = {
+        "Cluster": "cluster",
+        "DBSCAN_Cluster": "dbscan_cluster",
+        "Hierarchical_Cluster": "hierarchical_cluster",
+        "Persona": "persona",
+        "Tier": "customer_tier",
+    }
+    for response_key, column in columns.items():
         if column in customers.columns:
-            output[column] = customers[column].value_counts().to_dict()
+            output[response_key] = customers[column].value_counts().to_dict()
 
     return output
 
@@ -241,11 +244,11 @@ def segments_summary():
 def customer_segment(customer_id: str):
     customers = _customers()
 
-    if "CustomerID" not in customers.columns:
-        raise HTTPException(404, "CustomerID column not found.")
+    if "customer_id" not in customers.columns:
+        raise HTTPException(404, "customer_id column not found.")
 
     matches = customers[
-        customers["CustomerID"].astype(str) == str(customer_id)
+        customers["customer_id"].astype(str) == str(customer_id)
     ]
 
     if matches.empty:
@@ -253,14 +256,17 @@ def customer_segment(customer_id: str):
 
     customer = matches.iloc[0]
 
+    def scalar(value):
+        return value.item() if hasattr(value, "item") else value
+
     return {
         "customer_id": str(customer_id),
-        "cluster": customer.get("Cluster"),
-        "dbscan_cluster": customer.get("DBSCAN_Cluster"),
-        "hierarchical_cluster": customer.get("Hierarchical_Cluster"),
-        "persona": customer.get("Persona"),
-        "tier": customer.get("Tier"),
-        "score": customer.get("CustomerScore"),
+        "cluster": scalar(customer.get("cluster")),
+        "dbscan_cluster": scalar(customer.get("dbscan_cluster")),
+        "hierarchical_cluster": scalar(customer.get("hierarchical_cluster")),
+        "persona": scalar(customer.get("persona")),
+        "tier": scalar(customer.get("customer_tier")),
+        "score": scalar(customer.get("customer_intelligence_score")),
     }
 
 
@@ -287,7 +293,8 @@ def segmentation_advanced():
 def churn_compare():
     result = _result()
 
-    pipeline = ChurnPipeline().fit(result["customers"])
+    pipeline = ChurnPipeline()
+    pipeline.fit(result["customers"])
 
     return {
         "target_definition": pipeline.result.target_definition,
@@ -306,7 +313,8 @@ def churn_predict(
 ):
     result = _result()
 
-    pipeline = ChurnPipeline().fit(result["customers"])
+    pipeline = ChurnPipeline()
+    pipeline.fit(result["customers"])
 
     return pipeline.predict(
         result["customers"].head(limit),
@@ -318,7 +326,8 @@ def churn_predict(
 def churn_feature_importance():
     result = _result()
 
-    pipeline = ChurnPipeline().fit(result["customers"])
+    pipeline = ChurnPipeline()
+    pipeline.fit(result["customers"])
 
     return pipeline.result.feature_importance.to_dict(
         orient="records"
@@ -332,7 +341,8 @@ def churn_explain(
 ):
     result = _result()
 
-    pipeline = ChurnPipeline().fit(result["customers"])
+    pipeline = ChurnPipeline()
+    pipeline.fit(result["customers"])
 
     selected = model or pipeline.result.best_model_name()
 

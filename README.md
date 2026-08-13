@@ -324,7 +324,7 @@ Meridian also contains a FastAPI service for programmatic access to customer and
 Typical development startup:
 
 ```powershell
-uvicorn src.retail_segmentation.main:app --reload
+python -m src.api.run
 ```
 
 Depending on the current API entry point/configuration, the exact module path may differ. The FastAPI service is separate from the Streamlit presentation layer.
@@ -369,7 +369,7 @@ http://localhost:8501
 ### Start FastAPI separately
 
 ```powershell
-uvicorn src.retail_segmentation.main:app --reload
+python -m src.api.run
 ```
 
 API documentation:

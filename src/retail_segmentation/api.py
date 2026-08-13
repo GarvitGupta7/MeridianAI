@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from .config import settings
 from .database import RetailRepository
 from .service import RetailSegmentationService
-from fastapi import FastAPI
 from src.api.retailai import router as retailai_router
 
 app = FastAPI(
