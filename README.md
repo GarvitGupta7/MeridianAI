@@ -1,304 +1,73 @@
-# Meridian — Retail Intelligence
-
-**Meridian** is a retail intelligence and customer analytics platform built around the **RetailAI Nexus** engine. It turns transaction-level retail data into customer-level intelligence, segmentation, predictive signals, campaign decisions, sales-planning insights, data-quality checks, model diagnostics, recommendations, and explainability.
-
-The current project is a unified build containing the original Meridian workflow plus the newer RetailAI/Nexus predictive and ML capabilities.
-
----
-
-## 1. What Meridian Does
-
-Meridian is designed to answer four practical questions:
-
-1. **What is happening?**
-   - Revenue and transaction performance
-   - Customer portfolio size
-   - RFM/customer behaviour
-   - Data quality
-   - Customer health and risk
-
-2. **Which customers matter most?**
-   - Customer segmentation
-   - Customer tiers
-   - Personas
-   - High-value and at-risk customers
-   - Priority actions
-
-3. **What is likely to happen next?**
-   - Purchase probability
-   - Churn probability
-   - Next-purchase timing
-   - Predicted 90-day spend
-   - Customer scoring
-
-4. **What should the business do?**
-   - Campaign strategy
-   - Retention actions
-   - Recommended offers/channels
-   - Sales planning
-   - Customer-level decision reports
-
----
-
-## 2. Main Workspace
-
-The Streamlit workspace is organized into five primary navigation areas plus grouped dropdowns:
-
-### Main pages
-
-- **Overview** — portfolio-level retail intelligence and operating summary.
-- **Customers** — customer-level exploration and customer records.
-- **Predictive Engine** — forward-looking customer predictions and decision reports.
-- **Customer Visuals** — analytical/customer portfolio visualizations.
-- **Campaigns** — campaign and customer-treatment decisions.
-
-### Grouped pages
-
-**Intelligence**
-- Predictive Engine
-- Model Trust
-- Explainability
-
-**Analytics**
-- Customer Visuals
-- Advanced ML
-- Data Quality
-
-**Actions**
-- Campaigns
-- Sales Planning
-- Recommendations
-
-**Data**
-- Data upload / dataset controls and related data operations.
-
-The navigation is intentionally grouped so the workspace does not become a long collection of unrelated buttons.
-
----
-
-## 3. Current Predictive Capabilities
-
-The predictive layer includes customer-level models for:
-
-- Purchase probability
-- Churn probability
-- Next-purchase timing
-- Predicted 90-day spend
-
-The current predictive bundle uses customer feature snapshots including:
-
-- `recency_days`
-- `frequency`
-- `monetary_value`
-- `avg_order_value`
-- `tenure_days`
-- `purchase_rate`
-- `return_rate`
-- `product_diversity`
-
-The predictive models use Random Forest classifiers/regressors for the current purchase, churn, next-purchase, and spending workflows.
-
-### Important modelling note
-
-Some retail datasets do not contain a real historical churn outcome. In those cases Meridian uses an explicitly labelled **proxy churn target** rather than presenting the derived label as causal ground truth.
-
-The project therefore distinguishes between:
-
-- provided `churned` / `churn` labels, and
-- proxy labels derived from existing customer-risk information.
-
-This distinction is important when interpreting model metrics.
-
----
-
-## 4. Churn Model Comparison
-
-The dedicated churn pipeline supports comparison of:
-
-- Logistic Regression
-- Decision Tree
-- Random Forest
-- XGBoost when the optional dependency is available
-
-The comparison layer reports:
-
-- Accuracy
-- Precision
-- Recall
-- F1
-- ROC-AUC
-- Confusion matrices
-- Feature importance / coefficient magnitude
-
-The pipeline uses a shared customer feature-selection contract and separates preprocessing from model execution.
-
----
-
-## 5. Customer Analytics
-
-The analytics layer currently includes customer-level calculations for:
-
-- Recency
-- Frequency
-- Monetary value
-- Average order value
-- Tenure
-- Purchase rate
-- Return rate
-- Product diversity
-- Churn risk
-- Customer health
-- Customer lifetime value estimates
-- Customer personas
-- Customer tiers
-- Campaign opportunity scores
-
-Personas are mutually exclusive and priority-based. Current persona concepts include:
-
-- Premium customers
-- Loyal customers
-- At-risk customers
-- New customers
-- Big spenders
-- Bargain shoppers
-- Regular customers
-
----
-
-## 6. Campaign Decision Engine
-
-The campaign engine converts customer intelligence into differentiated actions rather than applying one generic treatment to an entire risk group.
-
-Decision inputs include:
-
-- Customer value
-- Churn risk
-- Health score
-- Recency
-- Frequency
-- Customer tier
-- Persona
-- Predicted future spend
-
-Outputs can include:
-
-- Priority
-- Campaign strategy
-- Recommended action
-- Suggested offer
-- Recommended channel
-- Incentive level
-- Campaign reason
-- Campaign opportunity score
-
-The intent is to protect high-value customers while avoiding unnecessary discounting for customers who are likely to return or grow organically.
-
----
-
-## 7. Data
-
-The original retail workflow works from transaction-level retail data. A representative source schema is:
-
-```text
-Invoice
-StockCode
-Description
-Quantity
-InvoiceDate
-Price
-Customer ID
-Country
-```
-
-The platform transforms transaction-level records into customer-level features used throughout the intelligence and predictive layers.
-
-### Data processing principles
-
-- Missing values are handled explicitly.
-- Infinite numeric values are sanitized.
-- Customer features are converted to numeric form before ML processing.
-- Shared feature contracts are used by production ML modules.
-- Dataset state is preserved while navigating the Streamlit workspace.
-
----
-
-## 8. Architecture
-
-The project is organized as a layered retail intelligence application.
-
-```text
-                    ┌─────────────────────────┐
-                    │      Streamlit UI        │
-                    │       dashboard.py      │
-                    └────────────┬────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │   Retail Intelligence   │
-                    │     Application Layer   │
-                    └────────────┬────────────┘
-                                 │
-          ┌──────────────────────┼──────────────────────┐
-          │                      │                      │
-          ▼                      ▼                      ▼
-   Segmentation            Predictive ML          Decision Engines
-   & Analytics             & Churn Models        & Recommendations
-          │                      │                      │
-          └──────────────────────┼──────────────────────┘
-                                 ▼
-                    ┌─────────────────────────┐
-                    │   Data / Database       │
-                    └─────────────────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │    FastAPI service      │
-                    │      API endpoints      │
-                    └─────────────────────────┘
-```
-
-### Key directories
-
-```text
-UnifiedMeridianAI/
-├── dashboard.py
-├── src/
-│   ├── retailai_engine/
-│   │   ├── advanced.py
-│   │   ├── churn_pipeline.py
-│   │   ├── production_pipeline.py
-│   │   ├── predictive.py
-│   │   ├── explainability.py
-│   │   ├── forecast_engine.py
-│   │   ├── recommendation_engine.py
-│   │   ├── segmentation.py
-│   │   └── ...
-│   └── retail_segmentation/
-│       ├── analytics.py
-│       ├── data.py
-│       ├── database.py
-│       ├── forecasting.py
-│       ├── predictive.py
-│       ├── recommendations.py
-│       └── ...
-├── dashboard/
-├── database/
-├── data/
-├── Models/
-├── Notebooks/
-├── Reports/
-├── Deployment/
-├── artifacts/
-├── tests/
-├── docs/
-└── requirements.txt
-```
-
-The exact contents may evolve as additional capabilities are added.
-
----
-
-## 9. Production ML Feature Contract
-
-New ML modules share a common customer feature contract:
+# MeridianAI
+
+MeridianAI is an AI-powered retail intelligence platform that converts transaction data into customer analytics, segmentation, predictive signals, campaign decisions, forecasts, recommendations, data-quality evidence, and explainable model outputs.
+
+The application combines a Streamlit workspace, a shared analytics and machine-learning service layer, persisted artifacts, and FastAPI. RetailAI Nexus is the historical name of the advanced engine integrated into MeridianAI; **MeridianAI is the current project name**.
+
+> Research note: several supervised outputs use proxy or feature-derived targets when observed future outcomes are unavailable. These outputs are engineering demonstrations, not evidence of causal or production generalization. See [Research and model-validity notes](#research-and-model-validity-notes).
+
+## Capabilities
+
+- Transaction ingestion from CSV, XLSX, XLS, or JSON
+- Automatic mapping of common retail column names
+- Validation, cleaning, profiling, and data-quality reporting
+- Customer aggregation and RFM analytics
+- K-Means, DBSCAN, hierarchical clustering, and anomaly detection
+- Customer personas, tiers, health, CLV, and churn-risk scoring
+- Purchase, churn, next-purchase, and 90-day-spend predictions
+- Logistic Regression, Decision Tree, Random Forest, and XGBoost churn comparison
+- Sales forecasting and uncertainty estimates
+- Campaign prioritization and customer-treatment decisions
+- Popularity, collaborative, cross-sell, upsell, and similarity recommendations
+- Model comparison, feature importance, and explainability outputs
+- Streamlit dashboard and 47-operation FastAPI interface
+
+## Workspace navigation
+
+The Streamlit application contains two primary pages, three grouped menus, and one global Data control.
+
+| Location | Pages or controls |
+|---|---|
+| Primary | Overview; Customers |
+| Intelligence | Predictive Engine; Model Trust; Advanced ML |
+| Analytics | Customer Visuals; Data Quality |
+| Actions | Campaigns; Sales Planning; Recommendations; Explainability |
+| Data | Upload a dataset; restore secure demo data; map fields; run analysis |
+
+The eleven functional pages are:
+
+1. **Overview** — portfolio metrics, operating signals, priorities, and summaries.
+2. **Customers** — customer search, filters, records, and intelligence export.
+3. **Predictive Engine** — a specific-customer or filtered-profile decision report.
+4. **Model Trust** — model metrics, thresholds, caveats, and interpretation.
+5. **Advanced ML** — advanced segmentation, model comparison, and customer scoring.
+6. **Customer Visuals** — tier, persona, cohort, risk, value, and forecast visualizations.
+7. **Data Quality** — active-dataset validation, cleaning evidence, and export.
+8. **Campaigns** — prioritized campaign treatments, offers, channels, and incentives.
+9. **Sales Planning** — forecast and customer-value planning outputs.
+10. **Recommendations** — customer-level product recommendations.
+11. **Explainability** — model explanation outputs.
+
+Uploaded data remains in Streamlit session state while the user navigates the workspace. Running an uploaded analysis with `persist=False` avoids overwriting the bundled persisted demo state.
+
+## Data contract
+
+The canonical transaction fields are:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `invoice_id` | Yes | Order or invoice identifier |
+| `customer_id` | Yes | Customer identifier |
+| `invoice_date` | Yes | Transaction timestamp |
+| `quantity` | Yes | Units purchased or returned |
+| `unit_price` | Yes | Per-unit price |
+| `stock_code` | No | Product identifier |
+| `product_name` | No | Product description |
+| `country` | No | Transaction country |
+
+The mapper recognizes common alternatives such as `Invoice`, `InvoiceNo`, `Customer ID`, `InvoiceDate`, `Price`, and `UnitPrice`. The Data control displays unresolved fields before analysis.
+
+The shared predictive feature contract is:
 
 ```text
 recency_days
@@ -311,234 +80,247 @@ return_rate
 product_diversity
 ```
 
-The reusable preprocessing pipeline selects the contract, replaces infinite values, handles missing values, converts features to numeric form, and can apply standard scaling where required.
+Shared preprocessing replaces infinite values, handles missing numeric values, converts features to numeric form, and applies scaling where the selected model requires it.
 
-This prevents each ML module from silently implementing a different preprocessing definition.
+## Architecture
 
----
+Streamlit and FastAPI are separate presentation interfaces over the same service, repository, and engine layers. The Streamlit application does not call FastAPI.
 
-## 10. API
-
-Meridian also contains a FastAPI service for programmatic access to customer and analytics functionality.
-
-Typical development startup:
-
-```powershell
-python -m src.api.run
+```mermaid
+flowchart TB
+    INPUT["Retail transaction data"] --> SERVICE["RetailSegmentationService"]
+    SERVICE --> CLEAN["Validation, cleaning, and feature engineering"]
+    CLEAN --> ANALYTICS["Analytics, segmentation, prediction, forecasting, and decisions"]
+    ANALYTICS --> STORE["SQLAlchemy repository and persisted artifacts"]
+    STORE --> UI["Streamlit workspace — dashboard.py"]
+    STORE --> API["FastAPI — src/retail_segmentation/api.py"]
+    ADV["src/retailai_engine"] --> ANALYTICS
+    ROUTER["src/api/retailai.py"] --> API
 ```
 
-Depending on the current API entry point/configuration, the exact module path may differ. The FastAPI service is separate from the Streamlit presentation layer.
+See [docs/architecture.md](docs/architecture.md) for component responsibilities and runtime flows.
 
-Swagger documentation is available during local development at:
+## Repository structure
 
 ```text
-http://127.0.0.1:8000/docs
+MeridianAI/
+├── dashboard.py
+├── requirements.txt
+├── .streamlit/config.toml
+├── artifacts/
+├── data/
+├── database/
+├── docs/
+│   ├── API_REFERENCE.md
+│   ├── CONFIGURATION.md
+│   ├── DATA_GOVERNANCE.md
+│   ├── DATABASE_DICTIONARY.md
+│   ├── DEPLOYMENT_RUNBOOK.md
+│   ├── MODEL_CARD.md
+│   ├── NOTEBOOK_TRACEABILITY.md
+│   ├── RELEASE_CHECKLIST.md
+│   ├── RESEARCH_EVALUATION_PLAN.md
+│   ├── architecture.md
+│   ├── project_report.md
+│   └── retailai_additions.md
+├── Notebooks/
+├── Reports/
+├── src/
+│   ├── api/
+│   │   ├── retailai.py
+│   │   └── run.py
+│   ├── retail_segmentation/
+│   │   ├── api.py
+│   │   ├── service.py
+│   │   ├── database.py
+│   │   ├── data.py
+│   │   ├── analytics.py
+│   │   ├── clustering.py
+│   │   ├── predictive.py
+│   │   ├── forecasting.py
+│   │   └── recommendations.py
+│   └── retailai_engine/
+│       ├── advanced.py
+│       ├── churn_pipeline.py
+│       ├── production_pipeline.py
+│       ├── forecast_engine.py
+│       ├── recommendation_engine.py
+│       └── explainability.py
+└── tests/
 ```
 
----
+## Local setup
 
-## 11. Running Locally
+### Prerequisites
 
-### Create/activate a virtual environment
+- Python 3.11 is the repository's configured development version.
+- Run the following commands from the repository root.
 
-Windows PowerShell:
+### Install
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-### Install dependencies
-
-```powershell
-pip install -r requirements.txt
-```
-
-### Start Streamlit
+### Run Streamlit
 
 ```powershell
 streamlit run dashboard.py
 ```
 
-The dashboard normally opens at:
+Open `http://localhost:8501`.
 
-```text
-http://localhost:8501
-```
+### Run FastAPI
 
-### Start FastAPI separately
+Use the canonical launcher:
 
 ```powershell
 python -m src.api.run
 ```
 
-API documentation:
+Equivalent direct command:
 
-```text
-http://127.0.0.1:8000/docs
+```powershell
+uvicorn src.retail_segmentation.api:app --reload
 ```
 
----
+Do not use `src.retail_segmentation.main:app`; `main.py` is the command-line pipeline, not the FastAPI application.
 
-## 12. Deployment
+Open:
 
-The Streamlit deployment uses the GitHub repository as the source of truth.
+- API: `http://127.0.0.1:8000`
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
 
-The deployment flow is:
+The API is versioned internally as `1.0.0` and currently has no authentication layer. Do not expose it publicly without authentication, authorization, transport security, rate limiting, input limits, and appropriate deployment controls.
 
-```text
-Local development
-       ↓
-Git commit
-       ↓
-GitHub repository
-       ↓
-Streamlit Cloud
-       ↓
-Install requirements.txt
-       ↓
-Run dashboard.py
+See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for all 47 operations and [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for environment and persistence settings.
+
+### Run the pipeline directly
+
+```powershell
+python -m src.retail_segmentation.main --demo
+python -m src.retail_segmentation.main --input path\to\transactions.csv
 ```
 
-The repository should contain a valid `requirements.txt` so the deployment environment can install the application's dependencies without attempting to install the repository itself as an unrelated Python package.
-
-### Generated ML artifacts
-
-Large generated model files such as `.pkl` artifacts should not be committed directly when they exceed GitHub's file-size limits.
-
-If a model is required at runtime in deployment, it should be supplied through an appropriate artifact-storage/deployment mechanism or regenerated during deployment.
-
----
-
-## 13. Testing
-
-The project contains a `tests/` directory covering areas including:
-
-- API error handling
-- Churn pipeline
-- Data validation
-- Explainability API
-- Forecast pipeline/API
-- Recommendation API
-- RetailAI advanced functionality
-- Segmentation API
-- Transformers
-
-Run the test suite with:
+### Run tests
 
 ```powershell
 pytest
 ```
 
----
+The repository contains tests intended to cover pipeline behavior, validation, transformations, segmentation, churn, forecasting, recommendations, explainability, advanced ML, and API error handling. The current full suite does **not** collect successfully: several tests still import removed package paths such as `src.api.main`, `src.preprocessing`, and `src.forecasting`, while some direct package imports require `src` on `PYTHONPATH`. Treat test repair as required work before claiming automated regression coverage.
 
-## 14. Design Principles
+## Persistence and configuration
 
-The current build follows several principles:
+- Default database: `artifacts/retail_segmentation.db`
+- Database implementation: SQLAlchemy
+- Optional database URL: `DATABASE_URL`
+- Default random state: `42`
+- K-Means candidate range: 2–8 clusters
+- Streamlit upload limit: 200 MB
 
-### Separate analysis from decisions
+SQLite works without extra configuration. PostgreSQL requires a valid `DATABASE_URL` and a separately installed compatible driver such as `psycopg`; that driver is not included in `requirements.txt`.
 
-Charts and portfolio analysis belong in analytical pages. Decision pages focus on actions and predictions.
+Generated artifacts must remain coupled to the code, feature contract, data snapshot, and evaluation record that produced them. Do not treat the bundled demo artifacts as production models.
 
-### Avoid leakage
+The raw `online_retail_II.csv` fingerprint matches the UCI Online Retail II dimensions and date range. Source-chain confirmation, citation, and governance requirements are documented in [docs/DATA_GOVERNANCE.md](docs/DATA_GOVERNANCE.md). Current table definitions are documented in [docs/DATABASE_DICTIONARY.md](docs/DATABASE_DICTIONARY.md), and bundled artifact hashes and metric limitations are documented in [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
 
-Targets must not be constructed directly from the same information used as model features when the resulting metric would become misleading.
+## API overview
 
-### Distinguish proxy targets from ground truth
+The canonical application combines base serving routes with the advanced MeridianAI router. It exposes 47 operations across health, analysis, customers, analytics, segmentation, churn, forecasting, campaigns, recommendations, data quality, and model outputs.
 
-A derived churn-risk label is treated as a proxy rather than a real-world observed churn outcome.
+Routes are mounted at the root; there is no `/retailai` prefix. See [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
 
-### Reuse preprocessing
+## Deployment
 
-Production ML modules use shared feature definitions and preprocessing contracts.
+The current Streamlit deployment model is:
 
-### Preserve navigation state
+```text
+Local validation → Git commit → GitHub main → Streamlit Cloud → dashboard.py
+```
 
-Dataset and analysis state should remain usable while navigating the workspace.
+Before deployment:
 
-### Keep the UI business-oriented
+1. Run the tests.
+2. Exercise upload, demo, navigation, predictions, and downloads locally.
+3. Start FastAPI and verify `/health`, `/docs`, and representative routes.
+4. Confirm required runtime artifacts are available and compatible.
+5. Keep secrets outside Git; `.streamlit/secrets.toml` is ignored.
+6. Confirm dependency and Python-version compatibility.
+7. Commit and push intentionally, then verify the deployed application.
 
-Technical model outputs are translated into customer, campaign, and sales decisions rather than exposing only raw ML metrics.
+Deployed Streamlit application: `https://meridian-ai.streamlit.app/`
 
----
+Deployment health and the deployed commit are operational state and must be verified at release time.
 
-## 15. Current Status
+## Research and model-validity notes
 
-### Implemented
+MeridianAI is both an engineering platform and a research foundation. Reported metrics must be interpreted according to the target and evaluation design.
 
-- Streamlit retail intelligence dashboard
-- Unified workspace navigation
-- Customer analytics
-- Customer segmentation
-- Customer personas
-- Customer tiers
-- Churn-risk analytics
-- Customer health scoring
-- Predictive engine
-- Purchase prediction
-- Churn prediction
-- Next-purchase prediction
-- 90-day spending prediction
-- Dedicated churn model comparison
-- Logistic Regression
-- Decision Tree
-- Random Forest
-- XGBoost support
-- Campaign decision engine
-- Sales-planning functionality
-- Recommendations
-- Explainability functionality
-- Data-quality functionality
-- Model-trust functionality
-- Customer visualizations
-- FastAPI service
-- API documentation through Swagger
-- Automated test coverage across major ML/API components
-- Streamlit deployment configuration
-- GitHub-based deployment workflow
-- Shared production preprocessing contract
-- Leakage reduction for churn modelling
-- Customer-level decision reporting
+Current limitations include:
 
-### In progress / operational considerations
+- Some churn labels can be proxy labels rather than observed outcomes.
+- Some future targets can be derived from current customer features.
+- Some bundled regression metrics are in-sample engineering diagnostics.
+- High metrics may reflect target leakage, an overly easy target, imbalance, or train/test contamination.
+- Bundled data and artifacts do not establish performance on a new retailer or future time period.
 
-- Production artifact storage for large ML models
-- Further deployment hardening
-- Continued UI refinement
-- Additional real-world labelled outcomes for supervised predictive models
+Research-quality evaluation should use versioned data snapshots, time-forward splits, targets observed strictly after the feature cutoff, appropriate baselines, calibration, uncertainty, drift analysis, and explicit limitations. Results must not be manufactured or presented beyond what the evaluation supports.
 
----
+See [docs/project_report.md](docs/project_report.md) for the current technical and research summary.
 
-## 16. Limitations
+The planned leakage-safe experimental protocol, baselines, ablations, calibration, uncertainty, robustness, and reproducibility requirements are specified in [docs/RESEARCH_EVALUATION_PLAN.md](docs/RESEARCH_EVALUATION_PLAN.md). Notebook relationships to production modules are mapped in [docs/NOTEBOOK_TRACEABILITY.md](docs/NOTEBOOK_TRACEABILITY.md).
 
-Meridian is an engineering/project implementation and not a guarantee of future customer behaviour.
+## Project status
 
-Particular care is required when:
+Implemented:
 
-- the dataset has no observed churn labels,
-- proxy targets are used,
-- future-outcome labels are synthetically constructed,
-- predictions are evaluated in-sample,
-- transaction history is too short,
-- customer identities or timestamps are incomplete.
+- Streamlit retail intelligence workspace
+- Shared processing and persistence service
+- Customer analytics, segmentation, personas, tiers, health, and risk
+- Predictive customer models and churn comparison
+- Forecasting, recommendations, campaigns, and sales planning
+- Data-quality, model-trust, and explainability views
+- FastAPI application with generated OpenAPI documentation
+- Test modules for major pipeline and API components; full-suite import repair is still required
 
-Model metrics should therefore be interpreted in the context of the target definition and evaluation methodology.
+Operational and research work still required:
 
----
+- Production authentication and API hardening
+- External artifact storage and model/version registry
+- Observed future-outcome labels
+- Time-forward and out-of-sample evaluation
+- Drift monitoring and scheduled ingestion
+- Deployment release/version tracking
+- Formal license and dataset provenance review
+- Test import migration and a green full-suite run
 
-## 17. Project Identity
+These are confirmed future commitments. Their scope and completion criteria are maintained in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-**Project:** Meridian — Retail Intelligence  
-**Engine:** RetailAI Nexus  
-**Primary interface:** Streamlit  
-**API layer:** FastAPI  
-**Primary language:** Python  
-**Focus:** Retail analytics, customer intelligence, predictive ML, segmentation, recommendations, and decision support.
+## Documentation index
 
----
+- [API reference](docs/API_REFERENCE.md)
+- [Configuration and operations](docs/CONFIGURATION.md)
+- [Data governance and provenance](docs/DATA_GOVERNANCE.md)
+- [Database dictionary](docs/DATABASE_DICTIONARY.md)
+- [Model and artifact card](docs/MODEL_CARD.md)
+- [Notebook-to-production traceability](docs/NOTEBOOK_TRACEABILITY.md)
+- [Research evaluation plan](docs/RESEARCH_EVALUATION_PLAN.md)
+- [Architecture](docs/architecture.md)
+- [Technical and research report](docs/project_report.md)
+- [Deployment and recovery runbook](docs/DEPLOYMENT_RUNBOOK.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Future-work roadmap](docs/ROADMAP.md)
+- [Historical RetailAI Nexus integration note](docs/retailai_additions.md)
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
+- [Contributing guide](CONTRIBUTING.md)
 
-## 18. License / Usage
+## License and data usage
 
-This repository is intended as an academic/project implementation unless a separate license or usage agreement is provided.
+No formal open-source license is currently included. Until a `LICENSE` file is added, do not assume permission to redistribute or reuse the repository beyond applicable law and explicit authorization.
 
-Do not commit credentials, private customer information, API keys, passwords, or other secrets to the repository.
+Do not commit credentials, private customer data, secrets, or retailer-confidential information. Confirm the provenance, terms, and redistribution rights of every dataset and generated artifact before public or production use.

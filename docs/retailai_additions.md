@@ -1,29 +1,20 @@
-# RetailAI Nexus Additions
+# Historical RetailAI Nexus integration note
 
-This layer is intentionally additive to MeridianAI. The existing dashboard and
-existing retail_segmentation workflow remain the primary application.
+RetailAI Nexus was the historical name of the advanced modelling layer that was merged into MeridianAI. This file is retained only to explain that evolution; it is not a description of a separate current product.
 
-## Added capabilities
+## Current state
 
-- RFM-backed customer scoring remains available through the existing analytics layer.
-- KMeans, DBSCAN, hierarchical clustering and Isolation Forest are available through the advanced segmentation layer.
-- Dedicated churn comparison with Logistic Regression, Decision Tree, Random Forest and XGBoost.
-- Accuracy, precision, recall, F1, ROC AUC and confusion matrices.
-- Churn feature importance and SHAP explanations.
-- Production-safe reusable customer preprocessing pipeline.
-- Collaborative filtering through customer-product matrices.
-- Customer similarity and product similarity.
-- Popularity recommendations and cold-start fallback.
-- Forecast feature engineering with lag, rolling, calendar and trend variables.
-- Linear Regression, Random Forest and XGBoost forecast comparison.
-- Forecast uncertainty bounds.
-- Batch churn predictions.
-- Optional FastAPI endpoints under `/retailai/*`.
-- Automated tests for the additive modules.
+- MeridianAI is the authoritative project name.
+- `src/retailai_engine/` remains the advanced ML package name for compatibility.
+- The advanced functionality is integrated into `dashboard.py`.
+- Advanced API routes are defined in `src/api/retailai.py`.
+- The router is included by `src/retail_segmentation/api.py` without a path prefix.
+- There is no current `/retailai/*` API namespace.
+
+Integrated capabilities include advanced segmentation, Isolation Forest, churn model comparison, reusable preprocessing, forecast comparison and uncertainty, recommendation methods, explainability, customer scoring, and model comparison.
 
 ## Compatibility rule
 
-`dashboard.py` is deliberately not modified by this addition. Existing Meridian
-screens and workflows therefore remain unchanged. The new functionality is
-available through the Python engine and optional API endpoints and can be surfaced
-in future UI iterations without changing the current deployed experience.
+Do not rename packages, artifacts, serialized class paths, or API routes solely to remove the historical `retailai` name without first evaluating import compatibility, model deserialization, tests, deployment configuration, and downstream clients.
+
+Future user-facing documentation should use MeridianAI. The historical name should appear only where needed to explain evolution or match an existing technical identifier.
